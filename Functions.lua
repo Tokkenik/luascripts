@@ -22,7 +22,7 @@ local Functions = {
     Pathfinding = function(name, targetPosition)
         local human = game:GetService("Players").LocalPlayer.Character:WaitForChild("Humanoid")
         local Body = game:GetService("Players").LocalPlayer.Character:WaitForChild("HumanoidRootPart")
-        local path = PathfindingService:CreatePath({AgentCanJump = false,})
+        local path = game:GetService("PathfindingService"):CreatePath({AgentCanJump = false,})
         path:ComputeAsync(Body.Position, targetPosition)
         if path.Status == Enum.PathStatus.Success then
            local wayPoints = path:GetWaypoints()
