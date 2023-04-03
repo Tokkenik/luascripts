@@ -20,23 +20,28 @@ local Functions = {
     end,
 
     Pathfinding = function(name, targetPosition)
-        local PathfindingService = game:GetService("PathfindingService")
-        local Humanoid = game:GetService("Players").LocalPlayer.Character:WaitForChild("Humanoid")
-        local Root = game:GetService("Players").LocalPlayer.Character:WaitForChild("HumanoidRootPart")
-        local path = PathfindingService:CreatePath({
-            AgentRadius = 1,
-            AgentCanJump = true,
-            AgentCanClimb = true,
-            WaypointSpacing = math.huge,
-        })
-        path:ComputeAsync(Root.Position, targetPosition)
-        local waypoints = path:GetWaypoints()
-        for i, waypoint in ipairs(waypoints) do
-            Humanoid:MoveTo(waypoint.Position)
-            if waypoint.Action == Enum.PathWaypointAction.Jump then
-                Humanoid.Jump = true
-            end
-            Humanoid.MoveToFinished:Wait()
+        local human = game.Players.LocalPlayer.Character.Humanoid
+        local Body = game.Players.LocalPlayer.Character.Torso or game.Players.LocalPlayer.Character:WaitForChild("HumanoidRootPart")
+        local path = game:GetService("PathfindingService"):CreatePath()
+        path:ComputeAsync(Body.Position, targetPosition)
+        if path.Status == Enum.PathStatus.Success then
+           local wayPoints = path:GetWaypoints()
+           for i = 1, #wayPoints do
+               local point = wayPoints[i]
+               human:MoveTo(point.Position)
+               local success = human.MoveToFinished:Wait()
+               if point.Action == Enum.PathWaypointAction.Jump then
+                   human.Jump = true
+               end
+               if not success then
+                   print("Trying to pathfind again...")
+                   human.Jump = true
+                   human:MoveTo(point.Position)
+                   if not human.MoveToFinished:Wait() then
+                       break
+                   end
+               end
+           end
         end
     end,}
 return Functions
