@@ -25,10 +25,9 @@ local Functions = {
         local Root = game:GetService("Players").LocalPlayer.Character:WaitForChild("HumanoidRootPart")
         local path = PathfindingService:CreatePath({
             AgentRadius = 1,
-            AgentHeight = 5.5,
             AgentCanJump = true,
-            WaypointSpacing = 2.5,
             AgentCanClimb = true,
+            WaypointSpacing = math.huge,
         })
         path:ComputeAsync(Root.Position, targetPosition)
         local waypoints = path:GetWaypoints()
