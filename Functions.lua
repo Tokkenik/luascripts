@@ -20,8 +20,8 @@ local Functions = {
     end,
 
     Pathfinding = function(name, targetPosition)
-        local human = game.Players.LocalPlayer.Character.Humanoid
-        local Body = game.Players.LocalPlayer.Character.Torso or game.Players.LocalPlayer.Character:WaitForChild("HumanoidRootPart")
+        local human = game:GetService("Players").LocalPlayer.Character:WaitForChild("Humanoid")
+        local Body = game:GetService("Players").LocalPlayer.Character:WaitForChild("HumanoidRootPart")
         local path = game:GetService("PathfindingService"):CreatePath()
         path:ComputeAsync(Body.Position, targetPosition)
         if path.Status == Enum.PathStatus.Success then
