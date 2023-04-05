@@ -34,24 +34,23 @@ local Functions = {
             })
             path:ComputeAsync(Body.Position, targetPosition)
             if path.Status == Enum.PathStatus.Success then
-               local wayPoints = path:GetWaypoints()
-               for i = 1, #wayPoints do
+                local wayPoints = path:GetWaypoints()
+                elapsedTime = 0
+                for i = 1, #wayPoints do
                     getgenv().pathfindingrunning = true
-                    local point = wayPoints[i]
-                    Humanoid:MoveTo(point.Position)
-                    local success = Humanoid.MoveToFinished:Wait()
-                    if not success then
-                       print("Trying to pathfind again...")
-                       Humanoid.Jump = true
-                       Humanoid:MoveTo(point.Position)
+                    repeat
+                        Humanoid:MoveTo(point.Position)
+                        elapsedTime += task.wait()
+                    until elapsedTime > 3
+                    if not Humanoid.MoveToFinished:Wait() then
+                        Humanoid.Jump = true
+                        print("Retrying...")
                         repeat
-                            if Humanoid.MoveToFinished:Wait() then
-                                break;
-                            end
+                            Humanoid:MoveTo(point.Position)
                             elapsedTime += task.wait()
                         until elapsedTime > 3
                     end
-                getgenv().pathfindingrunning = false
+                    getgenv().pathfindingrunning = false
                 end
             end
             getgenv().pathfindingrunning = false
