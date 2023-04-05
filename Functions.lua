@@ -26,8 +26,8 @@ local Functions = {
             local Humanoid = game:GetService("Players").LocalPlayer.Character:FindFirstChild("Humanoid")
             local Body = game:GetService("Players").LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             local path = game:GetService("PathfindingService"):CreatePath({
-            	AgentRadius = 1.5,
-            	AgentHeight = 6,
+                AgentRadius = 1.5,
+                AgentHeight = 6,
             	AgentCanJump = true,
             	AgentCanClimb = true,
             	WaypointSpacing = 3,
@@ -36,20 +36,23 @@ local Functions = {
             if path.Status == Enum.PathStatus.Success then
                local wayPoints = path:GetWaypoints()
                for i = 1, #wayPoints do
-                   getgenv().pathfindingrunning = true
-                   local point = wayPoints[i]
-                   Humanoid:MoveTo(point.Position)
-                   local success = Humanoid.MoveToFinished:Wait()
-                   if not success then
+                    getgenv().pathfindingrunning = true
+                    local point = wayPoints[i]
+                    Humanoid:MoveTo(point.Position)
+                    local success = Humanoid.MoveToFinished:Wait()
+                    if not success then
                        print("Trying to pathfind again...")
                        Humanoid.Jump = true
                        Humanoid:MoveTo(point.Position)
-                       if not Humanoid.MoveToFinished:Wait() then
-                           break
-                       end
-                   end
-                   getgenv().pathfindingrunning = false
-               end
+                        repeat
+                            if Humanoid.MoveToFinished:Wait() then
+                                break;
+                            end
+                            elapsedTime += task.wait()
+                        until elapsedTime > 3
+                    end
+                getgenv().pathfindingrunning = false
+                end
             end
             getgenv().pathfindingrunning = false
         else
