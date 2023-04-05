@@ -42,6 +42,9 @@ local Functions = {
                     repeat
                         Humanoid:MoveTo(point.Position)
                         elapsedTime += task.wait()
+                        if Humanoid.MoveToFinished:Wait() then
+                            break
+                        end
                     until elapsedTime > 3
                     if not Humanoid.MoveToFinished:Wait() then
                         Humanoid.Jump = true
