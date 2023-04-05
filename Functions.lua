@@ -39,7 +39,7 @@ local Functions = {
             			wait()
             			hum.Jump = false
             		end
-            		repeat
+            		repeat task.wait()
             		    hum:MoveTo(waypoint.Position)
             		until HRP.Position == waypoint.Position
             		if HRP.Position == targetPosition then
