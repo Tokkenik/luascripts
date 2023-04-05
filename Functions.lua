@@ -37,6 +37,7 @@ local Functions = {
                 local wayPoints = path:GetWaypoints()
                 elapsedTime = 0
                 for i = 1, #wayPoints do
+                    local point = wayPoints[i]
                     getgenv().pathfindingrunning = true
                     repeat
                         Humanoid:MoveTo(point.Position)
