@@ -23,8 +23,8 @@ local Functions = {
     Pathfinding = function(name, targetPosition)
         if not getgenv().pathfindingrunning then
             getgenv().pathfindingrunning = true
-            local Humanoid = game:GetService("Players").LocalPlayer.Character:WaitForChild("Humanoid")
-            local Body = game:GetService("Players").LocalPlayer.Character:WaitForChild("HumanoidRootPart")
+            local Humanoid = game:GetService("Players").LocalPlayer.Character:FindFirstChild("Humanoid")
+            local Body = game:GetService("Players").LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             local path = game:GetService("PathfindingService"):CreatePath({
             	AgentRadius = 1.5,
             	AgentHeight = 6,
@@ -36,6 +36,7 @@ local Functions = {
             if path.Status == Enum.PathStatus.Success then
                local wayPoints = path:GetWaypoints()
                for i = 1, #wayPoints do
+                   getgenv().pathfindingrunning = true
                    local point = wayPoints[i]
                    Humanoid:MoveTo(point.Position)
                    local success = Humanoid.MoveToFinished:Wait()
@@ -47,6 +48,7 @@ local Functions = {
                            break
                        end
                    end
+                   getgenv().pathfindingrunning = false
                end
             end
             getgenv().pathfindingrunning = false
