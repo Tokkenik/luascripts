@@ -18,33 +18,40 @@ local Functions = {
         local distanceinstuds = (playerPosition - partPosition).Magnitude
         return math.ceil(distanceinstuds)
     end,
-
+    
+    getgenv().pathfindingnotrunning = false
     Pathfinding = function(name, targetPosition)
-        local Humanoid = game:GetService("Players").LocalPlayer.Character:WaitForChild("Humanoid")
-        local Body = game:GetService("Players").LocalPlayer.Character:WaitForChild("HumanoidRootPart")
-        local path = game:GetService("PathfindingService"):CreatePath({
-        	AgentRadius = 1.5,
-        	AgentHeight = 6,
-        	AgentCanJump = true,
-        	AgentCanClimb = true,
-        	WaypointSpacing = 3,
-        })
-        path:ComputeAsync(Body.Position, targetPosition)
-        if path.Status == Enum.PathStatus.Success then
-           local wayPoints = path:GetWaypoints()
-           for i = 1, #wayPoints do
-               local point = wayPoints[i]
-               Humanoid:MoveTo(point.Position)
-               local success = Humanoid.MoveToFinished:Wait()
-               if not success then
-                   print("Trying to pathfind again...")
-                   Humanoid.Jump = true
+        if not getgenv().pathfindingnotrunning then
+            getgenv().pathfindingnotrunning = true
+            local Humanoid = game:GetService("Players").LocalPlayer.Character:WaitForChild("Humanoid")
+            local Body = game:GetService("Players").LocalPlayer.Character:WaitForChild("HumanoidRootPart")
+            local path = game:GetService("PathfindingService"):CreatePath({
+            	AgentRadius = 1.5,
+            	AgentHeight = 6,
+            	AgentCanJump = true,
+            	AgentCanClimb = true,
+            	WaypointSpacing = 3,
+            })
+            path:ComputeAsync(Body.Position, targetPosition)
+            if path.Status == Enum.PathStatus.Success then
+               local wayPoints = path:GetWaypoints()
+               for i = 1, #wayPoints do
+                   local point = wayPoints[i]
                    Humanoid:MoveTo(point.Position)
-                   if not Humanoid.MoveToFinished:Wait() then
-                       break
+                   local success = Humanoid.MoveToFinished:Wait()
+                   if not success then
+                       print("Trying to pathfind again...")
+                       Humanoid.Jump = true
+                       Humanoid:MoveTo(point.Position)
+                       if not Humanoid.MoveToFinished:Wait() then
+                           break
+                       end
                    end
                end
-           end
+            end
+            getgenv().pathfindingnotrunning = false
+        else
+            print("Pathfinding already running, please finish the last one to start the next one.")
         end
     end,}
 return Functions
