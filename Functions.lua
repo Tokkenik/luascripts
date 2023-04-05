@@ -1,3 +1,4 @@
+getgenv().pathfindingnotrunning = false
 local Functions = {
     PlayerPosition = function(name)
         local player = game.Players.LocalPlayer
@@ -19,10 +20,9 @@ local Functions = {
         return math.ceil(distanceinstuds)
     end,
     
-    getgenv().pathfindingnotrunning = false
     Pathfinding = function(name, targetPosition)
-        if not getgenv().pathfindingnotrunning then
-            getgenv().pathfindingnotrunning = true
+        if not getgenv().pathfindingrunning then
+            getgenv().pathfindingrunning = true
             local Humanoid = game:GetService("Players").LocalPlayer.Character:WaitForChild("Humanoid")
             local Body = game:GetService("Players").LocalPlayer.Character:WaitForChild("HumanoidRootPart")
             local path = game:GetService("PathfindingService"):CreatePath({
@@ -49,9 +49,10 @@ local Functions = {
                    end
                end
             end
-            getgenv().pathfindingnotrunning = false
+            getgenv().pathfindingrunning = false
         else
             print("Pathfinding already running, please finish the last one to start the next one.")
         end
-    end,}
+    end
+}
 return Functions
