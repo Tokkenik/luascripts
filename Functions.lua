@@ -51,7 +51,6 @@ local Functions = {
             end
             getgenv().pathfindingrunning = false
         else
-            print("Pathfinding already running, please finish the last one to start the next one.")
         end
     end
 }
