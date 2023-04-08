@@ -1,320 +1,350 @@
---Don't touch
-local pathLib = {}
-local master_node_table, mnt_index
- 
---Touch
-local ai_max_range = math.huge
-local printAStarPerformance = false
- 
-local NormalIds = {
-	Enum.NormalId.Front;
-	Enum.NormalId.Back;
-	Enum.NormalId.Right;
-	Enum.NormalId.Left;
-	Enum.NormalId.Top;
-	Enum.NormalId.Bottom;
+--[[
+-------------------------------------------------------------------
+
+Created by: @V3N0M_Z
+Reference: https://v3n0m-z.github.io/RBLX-SimplePath/
+License: MIT
+
+---------------------------------------------------------------------
+]]
+
+local DEFAULT_SETTINGS = {
+
+	TIME_VARIANCE = 0.07;
+
+	COMPARISON_CHECKS = 1;
+
+	JUMP_WHEN_STUCK = true;
 }
 
- 
-function pathLib.SearchById(masterTable, searchId)
-    for i, j in pairs(masterTable) do
-        if j.ID == searchId then
-            return j.Brick
-        end
-    end
-    return nil
+---------------------------------------------------------------------
+
+local PathfindingService = game:GetService("PathfindingService")
+local Players = game:GetService("Players")
+local function output(func, msg)
+	func(((func == error and "SimplePath Error: ") or "SimplePath: ")..msg)
 end
- 
- 
-function pathLib.SearchByBrick(masterTable, brick)
-    for i, j in pairs(masterTable) do
-        if j.Brick == brick then
-        	return j.ID
-        end
-    end
-    return nil
-end
- 
- 
-function drawColoredSurface(part, face)
-    local surfGui = Instance.new("SurfaceGui", part)
-    surfGui.Name = tostring(face).."Layer"
-    surfGui.CanvasSize = Vector2.new(64, 64)
-    surfGui.Adornee = part
-    surfGui.Face = face
-    surfGui.Enabled = true
-    local lab = Instance.new("ImageLabel", surfGui)
-    lab.Size = UDim2.new(1, 0, 1, 0)
-    lab.BorderSizePixel = 1
-    return lab
-end
- 
- 
-local function drawColoredSurfaces(part, color, transparency)
-    local labs = {}
-    for label = 1, 6 do
-		labs[label] = drawColoredSurface(part, NormalIds[label])
+local Path = {
+	StatusType = {
+		Idle = "Idle";
+		Active = "Active";
+	};
+	ErrorType = {
+		LimitReached = "LimitReached";
+		TargetUnreachable = "TargetUnreachable";
+		ComputationError = "ComputationError";
+		AgentStuck = "AgentStuck";
+	};
+}
+Path.__index = function(table, index)
+	if index == "Stopped" and not table._humanoid then
+		output(error, "Attempt to use Path.Stopped on a non-humanoid.")
 	end
-    for _, v in pairs(labs) do
-        v.BackgroundColor3 = color
-        v.BackgroundTransparency = transparency
-        v.BorderColor3 = color
-    end
+	return (table._events[index] and table._events[index].Event)
+		or (index == "LastError" and table._lastError)
+		or (index == "Status" and table._status)
+		or Path[index]
 end
- 
 
- 
-local function drawLine(p, a, b, c, width)
-    local distance = (b.Position - a.Position).magnitude
-    local part = Instance.new("Part", p)
-    part.Transparency  = 1
-    part.Anchored      = true
-    part.CanCollide    = false
-    part.TopSurface    = Enum.SurfaceType.Smooth
-    part.BottomSurface = Enum.SurfaceType.Smooth
-    part.formFactor    = Enum.FormFactor.Custom
-    part.Size          = Vector3.new(width or 0.2, 0.2, distance)
-    part.CFrame        = CFrame.new(b.Position, a.Position) * CFrame.new(0, 0, -distance/2)
-	part.Archivable    = false
-    local pl = Instance.new("PointLight", part)
-    pl.Shadows = true
-    pl.Range = 16
-    pl.Color = c
-    drawColoredSurfaces(part, c, 0.2)
-    return part
+--Used to visualize waypoints
+local visualWaypoint = Instance.new("Part")
+visualWaypoint.Size = Vector3.new(0.3, 0.3, 0.3)
+visualWaypoint.Anchored = true
+visualWaypoint.CanCollide = false
+visualWaypoint.Material = Enum.Material.Neon
+visualWaypoint.Shape = Enum.PartType.Ball
+
+--[[ PRIVATE FUNCTIONS ]]--
+local function declareError(self, errorType)
+	self._lastError = errorType
+	self._events.Error:Fire(errorType)
 end
-       
 
-function pathLib.GetPathLength(path)
-	local prev = path[1]
-	local plen = 0
-	for node = 2, #path do
-		local dist = (path[node].Position - prev.Position).magnitude
-		plen = plen + dist
+--Create visual waypoints
+local function createVisualWaypoints(waypoints)
+	local visualWaypoints = {}
+	for _, waypoint in ipairs(waypoints) do
+		local visualWaypointClone = visualWaypoint:Clone()
+		visualWaypointClone.Position = waypoint.Position
+		visualWaypointClone.Parent = workspace
+		visualWaypointClone.Color =
+			(waypoint == waypoints[#waypoints] and Color3.fromRGB(0, 255, 0))
+			or (waypoint.Action == Enum.PathWaypointAction.Jump and Color3.fromRGB(255, 0, 0))
+			or Color3.fromRGB(255, 139, 0)
+		table.insert(visualWaypoints, visualWaypointClone)
 	end
-	return plen
+	return visualWaypoints
+end
+
+--Destroy visual waypoints
+local function destroyVisualWaypoints(waypoints)
+	if waypoints then
+		for _, waypoint in ipairs(waypoints) do
+			waypoint:Destroy()
+		end
+	end
+	return
+end
+
+--Get initial waypoint for non-humanoid
+local function getNonHumanoidWaypoint(self)
+	--Account for multiple waypoints that are sometimes in the same place
+	for i = 2, #self._waypoints do
+		if (self._waypoints[i].Position - self._waypoints[i - 1].Position).Magnitude > 0.1 then
+			return i
+		end
+	end
+	return 2
+end
+
+--Make NPC jump
+local function setJumpState(self)
+	pcall(function()
+		if self._humanoid:GetState() ~= Enum.HumanoidStateType.Jumping and self._humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then
+			self._humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end)
+end
+
+--Primary move function
+local function move(self)
+	if self._waypoints[self._currentWaypoint].Action == Enum.PathWaypointAction.Jump then
+		setJumpState(self)
+	end
+	self._humanoid:MoveTo(self._waypoints[self._currentWaypoint].Position)
+end
+
+--Disconnect MoveToFinished connection when pathfinding ends
+local function disconnectMoveConnection(self)
+	self._moveConnection:Disconnect()
+	self._moveConnection = nil
+end
+
+--Fire the WaypointReached event
+local function invokeWaypointReached(self)
+	local lastWaypoint = self._waypoints[self._currentWaypoint - 1]
+	local nextWaypoint = self._waypoints[self._currentWaypoint]
+	self._events.WaypointReached:Fire(self._agent, lastWaypoint, nextWaypoint)
+end
+
+local function moveToFinished(self, reached)
+	
+	--Stop execution if Path is destroyed
+	if not getmetatable(self) then return end
+
+	--Handle case for non-humanoids
+	if not self._humanoid then
+		if reached and self._currentWaypoint + 1 <= #self._waypoints then
+			invokeWaypointReached(self)
+			self._currentWaypoint += 1
+		elseif reached then
+			self._visualWaypoints = destroyVisualWaypoints(self._visualWaypoints)
+			self._target = nil
+			self._events.Reached:Fire(self._agent, self._waypoints[self._currentWaypoint])
+		else
+			self._visualWaypoints = destroyVisualWaypoints(self._visualWaypoints)
+			self._target = nil
+			declareError(self, self.ErrorType.TargetUnreachable)
+		end
+		return
+	end
+
+	if reached and self._currentWaypoint + 1 <= #self._waypoints  then --Waypoint reached
+		if self._currentWaypoint + 1 < #self._waypoints then
+			invokeWaypointReached(self)
+		end
+		self._currentWaypoint += 1
+		move(self)
+	elseif reached then --Target reached, pathfinding ends
+		disconnectMoveConnection(self)
+		self._status = Path.StatusType.Idle
+		self._visualWaypoints = destroyVisualWaypoints(self._visualWaypoints)
+		self._events.Reached:Fire(self._agent, self._waypoints[self._currentWaypoint])
+	else --Target unreachable
+		disconnectMoveConnection(self)
+		self._status = Path.StatusType.Idle
+		self._visualWaypoints = destroyVisualWaypoints(self._visualWaypoints)
+		declareError(self, self.ErrorType.TargetUnreachable)
+	end
+end
+
+--Refer to Settings.COMPARISON_CHECKS
+local function comparePosition(self)
+	if self._currentWaypoint == #self._waypoints then return end
+	self._position._count = ((self._agent.PrimaryPart.Position - self._position._last).Magnitude <= 0.07 and (self._position._count + 1)) or 0
+	self._position._last = self._agent.PrimaryPart.Position
+	if self._position._count >= self._settings.COMPARISON_CHECKS then
+		if self._settings.JUMP_WHEN_STUCK then
+			setJumpState(self)
+		end
+		declareError(self, self.ErrorType.AgentStuck)
+	end
+end
+
+--[[ STATIC METHODS ]]--
+function Path.GetNearestCharacter(fromPosition)
+	local character, dist = nil, math.huge
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character and (player.Character.PrimaryPart.Position - fromPosition).Magnitude < dist then
+			character, dist = player.Character, (player.Character.PrimaryPart.Position - fromPosition).Magnitude
+		end
+	end
+	return character
+end
+
+--[[ CONSTRUCTOR ]]--
+function Path.new(agent, agentParameters, override)
+	if not (agent and agent:IsA("Model") and agent.PrimaryPart) then
+		output(error, "Pathfinding agent must be a valid Model Instance with a set PrimaryPart.")
+	end
+
+	local self = setmetatable({
+		_settings = override or DEFAULT_SETTINGS;
+		_events = {
+			Reached = Instance.new("BindableEvent");
+			WaypointReached = Instance.new("BindableEvent");
+			Blocked = Instance.new("BindableEvent");
+			Error = Instance.new("BindableEvent");
+			Stopped = Instance.new("BindableEvent");
+		};
+		_agent = agent;
+		_humanoid = agent:FindFirstChildOfClass("Humanoid");
+		_path = PathfindingService:CreatePath(agentParameters);
+		_status = "Idle";
+		_t = 0;
+		_position = {
+			_last = Vector3.new();
+			_count = 0;
+		};
+	}, Path)
+
+	--Configure settings
+	for setting, value in pairs(DEFAULT_SETTINGS) do
+		self._settings[setting] = self._settings[setting] == nil and value or self._settings[setting]
+	end
+
+	--Path blocked connection
+	self._path.Blocked:Connect(function(...)
+		if (self._currentWaypoint <= ... and self._currentWaypoint + 1 >= ...) and self._humanoid then
+			setJumpState(self)
+			self._events.Blocked:Fire(self._agent, self._waypoints[...])
+		end
+	end)
+
+	return self
 end
 
 
-function pathLib.DrawPath(path)
-    local drawn = Instance.new("Model", workspace)
-    drawn.Name = "DrawnPath"
-    local red, green, last
-    local num = 0
-    local pLen = #path
-    local colorInterval = (255 / pLen) / 255
-    local a = path[1]
-    local b = path[pLen]
-    for _, p in pairs(path) do
-        if num < 255 then
-        	num = num + 1
-        end
-        if not (last == nil)then
-	        red = num * colorInterval
-	        drawLine(drawn, last, p, Color3.new(1 - red, red, 0), 2)
-        end
-        last = p
-    end
-    return drawn
+--[[ NON-STATIC METHODS ]]--
+function Path:Destroy()
+	for _, event in ipairs(self._events) do
+		event:Destroy()
+	end
+	self._events = nil
+	if rawget(self, "_visualWaypoints") then
+		self._visualWaypoints = destroyVisualWaypoints(self._visualWaypoints)
+	end
+	self._path:Destroy()
+	setmetatable(self, nil)
+	for k, _ in pairs(self) do
+		self[k] = nil
+	end
 end
- 
- 
-local function nodeObjectFromBrick(brick)
-    if brick.ClassName ~= "Part" then
-    	return nil
-    end
-    local node_index = mnt_index
-    master_node_table[node_index] = {
-        ID = mnt_index,
-        Brick = brick,
-        Connections = {}
-    }
-    for i, child in pairs(brick:GetChildren()) do
-        if child.ClassName == "ObjectValue" and child.Name == "connection" then
-            local brick2 = child.Value
-			if brick2 == nil then
-				error("Cannot parse nodegraph, Connection value nil at node " .. pathLib.SearchByBrick(master_node_table, brick))
-			end
-            local ID = pathLib.SearchByBrick(master_node_table, brick2)
-            if ID == nil then
-                mnt_index = mnt_index + 1
-                ID = nodeObjectFromBrick(brick2)
-            end
-            local con = {
-                ID = ID,
-                G = (master_node_table[ID].Brick.Position - brick.Position).magnitude
-            }
-            table.insert(master_node_table[node_index].Connections, con)
-        end
-    end
-   
-    return node_index
-end
- 
- 
 
-function pathLib.CollectNodes(model)
-    master_node_table = {}
-    mnt_index = 1
-    for i, child in pairs(model:GetChildren()) do
-        if child.ClassName == "Part" and pathLib.SearchByBrick(master_node_table, child) == nil then
-            nodeObjectFromBrick(child)
-            mnt_index = mnt_index + 1
-        end
-    end
-    return master_node_table, mnt_index
+function Path:Stop()
+	if not self._humanoid then
+		output(error, "Attempt to call Path:Stop() on a non-humanoid.")
+		return
+	end
+	if self._status == Path.StatusType.Idle then
+		output(function(m)
+			warn(debug.traceback(m))
+		end, "Attempt to run Path:Stop() in idle state")
+		return
+	end
+	disconnectMoveConnection(self)
+	self._status = Path.StatusType.Idle
+	self._visualWaypoints = destroyVisualWaypoints(self._visualWaypoints)
+	self._events.Stopped:Fire(self._model)
 end
- 
- 
 
-local function heuristic(id1, id2)
-	local p1 = master_node_table[id1].Brick.Position
-	local p2 = master_node_table[id2].Brick.Position
-	return (p1 - p2).magnitude
-end
- 
+function Path:Run(target)
 
- 
-local function len(t) --returns table length for tables with string indexing
-    local l = 0
-    for i, j in pairs(t) do
-	    if j ~= nil then
-	    	l = l + 1
-	    end
-    end
-    return l
-end
- 
- 
+	--Non-humanoid handle case
+	if not target and not self._humanoid and self._target then
+		moveToFinished(self, true)
+		return
+	end
 
-local function getPath(t, n)
-	if t[n] == nil then
-		return {n}
+	--Parameter check
+	if not (target and (typeof(target) == "Vector3" or target:IsA("BasePart"))) then
+		output(error, "Pathfinding target must be a valid Vector3 or BasePart.")
+	end
+
+	--Refer to Settings.TIME_VARIANCE
+	if os.clock() - self._t <= self._settings.TIME_VARIANCE and self._humanoid then
+		task.wait(os.clock() - self._t)
+		declareError(self, self.ErrorType.LimitReached)
+		return false
+	elseif self._humanoid then
+		self._t = os.clock()
+	end
+
+	--Compute path
+	local pathComputed, _ = pcall(function()
+		self._path:ComputeAsync(self._agent.PrimaryPart.Position, (typeof(target) == "Vector3" and target) or target.Position)
+	end)
+
+	--Make sure path computation is successful
+	if not pathComputed
+		or self._path.Status == Enum.PathStatus.NoPath
+		or #self._path:GetWaypoints() < 2
+		or (self._humanoid and self._humanoid:GetState() == Enum.HumanoidStateType.Freefall) then
+		self._visualWaypoints = destroyVisualWaypoints(self._visualWaypoints)
+		task.wait()
+		declareError(self, self.ErrorType.ComputationError)
+		return false
+	end
+
+	--Set status to active; pathfinding starts
+	self._status = (self._humanoid and Path.StatusType.Active) or Path.StatusType.Idle
+	self._target = target
+
+	--Set network owner to server to prevent "hops"
+	pcall(function()
+		self._agent.PrimaryPart:SetNetworkOwner(nil)
+	end)
+
+	--Initialize waypoints
+	self._waypoints = self._path:GetWaypoints()
+	self._currentWaypoint = 2
+
+	--Refer to Settings.COMPARISON_CHECKS
+	if self._humanoid then
+		comparePosition(self)
+	end
+
+	--Visualize waypoints
+	destroyVisualWaypoints(self._visualWaypoints)
+	self._visualWaypoints = (self.Visualize and createVisualWaypoints(self._waypoints))
+
+	--Create a new move connection if it doesn't exist already
+	self._moveConnection = self._humanoid and (self._moveConnection or self._humanoid.MoveToFinished:Connect(function(...)
+		moveToFinished(self, ...)
+	end))
+
+	--Begin pathfinding
+	if self._humanoid then
+		self._humanoid:MoveTo(self._waypoints[self._currentWaypoint].Position)
+	elseif #self._waypoints == 2 then
+		self._target = nil
+		self._visualWaypoints = destroyVisualWaypoints(self._visualWaypoints)
+		self._events.Reached:Fire(self._agent, self._waypoints[2])
 	else
-	    local t2 = getPath(t, t[n])
-	    table.insert(t2, n)
-	    return t2
+		self._currentWaypoint = getNonHumanoidWaypoint(self)
+		moveToFinished(self, true)
 	end
+	return true
 end
- 
 
- 
-function pathLib.GetFarthestNode(position, returnBrick, dir, masterTable)
-    local nodeDir = dir
-    if type(dir) ~= "table" then
-    	nodeDir = dir:children()
-    end
-    local farthest = nodeDir[1]
-    for n = 2, #nodeDir do
-        local old = (farthest.Position - position).magnitude
-        local new = (position - nodeDir[n].Position).magnitude
-        if new > old then
-        	farthest = nodeDir[n]
-        end
-    end
-    if returnBrick then
-    	return farthest
-    else
-    	return pathLib.SearchByBrick(masterTable, farthest)
-    end
-end
- 
- 
-
-function pathLib.GetNearestNode(position, returnBrick, dir, masterTable)
-    local nodeDir = dir
-    if type(dir) ~= "table" then
-            nodeDir = dir:children()
-    end
-    local nearest = nodeDir[1]
-    for n = 2, #nodeDir do
-        local old = (nearest.Position - position).magnitude
-        local new = (position - nodeDir[n].Position).magnitude
-        if new < old then
-        	nearest = nodeDir[n]
-        end
-    end
-    if returnBrick then
-    	return nearest
-    else
-    	return pathLib.SearchByBrick(masterTable, nearest)
-    end
-end
- 
- 
-
-function pathLib.AStar(masterTable, startID, endID)
-    local now = tick()
-    local closed = {}
-    local open = {startID}
-    local previous = {}
-    local g_score = {}
-    local f_score = {}
-   
-    g_score[startID] = 0
-    f_score[startID] = heuristic(startID, endID)
-   
-    while len(open) > 0 do
-        local current, current_i = nil, nil
-        for i, j in pairs(open) do
-            if current == nil then
-                current = j
-                current_i = i
-            else
-                if j ~= nil then
-                    if f_score[j] < f_score[current] then
-                        current = j
-                        current_i = i
-                    end
-                end
-            end
-        end
-       
-        if current == endID then
-            local path = getPath(previous, endID)
-            local ret = {}
-            for i, j in pairs(path) do
-            	table.insert(ret, masterTable[j].Brick)
-            end
-            if printAStarPerformance then
-            	print("Time taken for AStar to run: "..tostring(tick() - now))
-            end
-            return ret
-        end
-       
-        open[current_i] = nil
-        table.insert(closed, current)
-       
-        for i, j in pairs(masterTable[current].Connections) do
-            local in_closed = false
-            for k, l in pairs(closed) do
-                if l == j.ID then
-                    in_closed = true
-                    break
-                end
-            end
-            if in_closed == false then
-                local tentative_score = g_score[current] + j.G
-                local in_open = false
-                for k, l in pairs(open) do
-                    if l == j.ID then
-                    	in_open = true
-                        break
-                    end
-                end
-                if in_open == false or tentative_score < g_score[j.ID] then
-                    previous[j.ID] = current
-                    g_score[j.ID] = tentative_score
-                    f_score[j.ID] = g_score[j.ID] + heuristic(j.ID, endID)
-                    if in_open == false then
-                    	table.insert(open, j.ID)
-                    end
-                end
-            end
-        end
-    end
-    return nil
-end
- 
- 
-return pathLib
+return Path
