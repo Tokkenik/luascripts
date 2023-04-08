@@ -12,7 +12,7 @@ local DEFAULT_SETTINGS = {
 
 	TIME_VARIANCE = 0.07;
 
-	COMPARISON_CHECKS = 1;
+	COMPARISON_CHECKS = 2;
 
 	JUMP_WHEN_STUCK = true;
 }
@@ -99,11 +99,9 @@ end
 
 --Make NPC jump
 local function setJumpState(self)
-	pcall(function()
-		if self._humanoid:GetState() ~= Enum.HumanoidStateType.Jumping and self._humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then
-			self._humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-		end
-	end)
+	if self._humanoid:GetState() ~= Enum.HumanoidStateType.Jumping and self._humanoid:GetState() ~= Enum.HumanoidStateType.Freefall then
+		self._humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
 end
 
 --Primary move function
