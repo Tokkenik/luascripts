@@ -10,7 +10,7 @@ License: MIT
 
 local DEFAULT_SETTINGS = {
 
-	TIME_VARIANCE = 0.07;
+	TIME_VARIANCE = 0.14;
 
 	COMPARISON_CHECKS = 2;
 
@@ -48,7 +48,7 @@ end
 
 --Used to visualize waypoints
 local visualWaypoint = Instance.new("Part")
-visualWaypoint.Size = Vector3.new(0.3, 0.3, 0.3)
+visualWaypoint.Size = Vector3.new(1, 2, 1)
 visualWaypoint.Anchored = true
 visualWaypoint.CanCollide = false
 visualWaypoint.Material = Enum.Material.Neon
@@ -70,7 +70,7 @@ local function createVisualWaypoints(waypoints)
 		visualWaypointClone.Color =
 			(waypoint == waypoints[#waypoints] and Color3.fromRGB(0, 255, 0))
 			or (waypoint.Action == Enum.PathWaypointAction.Jump and Color3.fromRGB(255, 0, 0))
-			or Color3.fromRGB(255, 139, 0)
+			or Color3.fromRGB(0, 0, 255)
 		table.insert(visualWaypoints, visualWaypointClone)
 	end
 	return visualWaypoints
